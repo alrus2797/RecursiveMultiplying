@@ -63,16 +63,18 @@ int all_reduce(int rank, int* com, mat_sch schedule, int* global){
 						//std::cout<< "See if dangerous operation is float: " << pthres/pbase<<std::endl;
 					}
 					// Send non blocking value to rpeer
-					MPI_Send(value, 1, MPI_INT, rpeer, 0, MPI_COMM_WORLD);
+					MPI_Request request;
+					MPI_Isend(value, 1, MPI_INT, rpeer, 0, MPI_COMM_WORLD,&request);
 				}
 
 				for (size_t i = 0; i < sfactor - 1; i++)
 				{
 					// Recv value from peer
-					MPI_Recv(global, 1, MPI_INT, peers[i], 0, MPI_COMM_WORLD, &status);
+					MPI_Request request;
+					MPI_Irecv(global, 1, MPI_INT, peers[i], 0, MPI_COMM_WORLD, &request);
 					// Reduce value bfur
-					MPI_Reduce_local(global, value, 1, MPI_INT, MPI_SUM);
-					std::cout<< "Res local reduce: "<< *(value)<<" Rank: "<<  wid << " From: " << peers[i] <<" Stage: " << stage[2] << " Global: "<< *(global) <<std::endl;
+					MPI_Wait(&request,&status);					MPI_Reduce_local(global, value, 1, MPI_INT, MPI_SUM);
+					//std::cout<< "Res local reduce: "<< *(value)<<" Rank: "<<  wid << " From: " << peers[i] <<" Stage: " << stage[2] << " Global: "<< *(global) <<std::endl;
 				}
 				//std::cout<<"Llego"<<std::endl;
 				// Wait on sends
@@ -83,28 +85,61 @@ int all_reduce(int rank, int* com, mat_sch schedule, int* global){
 	}
 }
 
+#include"timer.c"
+#include"output.h"
+#include<memory.h>
+
 int main(int argc, char *argv[])
 {
 	MPI_Init(&argc,&argv);
 	mat_sch schedule = {
-		{1,2,1},
-		{1,2,2},
-		{1,2,3},
-		{1,2,4},
+		{1,4,1}//,
+		//{1,6,2}//,
+		//{1,3,3}//,
+		//{1,2,4},
 	};
 	int rank;
 	MPI_Comm_rank(MPI_COMM_WORLD,&rank);
 	int global;
+	int world_size;
+        MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 	int com =  rank;
 	//std::cout<<"Node Value: "<< com << " - Rank: "<<rank<<std::endl;
 
 	//MPI_Allreduce(&com, &global, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-
-	all_reduce(rank, &com, schedule, &global);
-	MPI_Barrier(MPI_COMM_WORLD);
+	struct time_object start, end;
+	t_time dataset_raw[BLOCKS];
+	for(int j = 0; j < BLOCKS; ++j){
+		t_time total_time = 0;
+		for(int i  = 0; i < SAMPLES ; ++i){
+			com = rank + i;
+			start = get_time();
+			all_reduce(rank, &com, schedule, &global);
+			MPI_Barrier(MPI_COMM_WORLD);
+			end = get_time();
+			total_time += diff_time(end,start);
+		}
+		dataset_raw[j] = total_time;
+	}
+	t_time dataset[BLOCKS];
+	MPI_Reduce(dataset_raw,dataset,BLOCKS,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+	if(rank == 0){
+                char* str1;
+                char* str2;
+                char str4[10];
+                sprintf(str4, "%d", world_size);
+                str1 = "dataset_";
+                str2 = "_rm.csv";
+                char * str3 = (char *) malloc(1 + strlen(str1)+strlen(str4)+ strlen(str2) );
+                strcpy(str3, str1);
+                strcat(str3, str4);
+                strcat(str3, str2);
+		for(int i = 0; i < BLOCKS; ++i)
+			dataset_raw[i] /= SAMPLES*1000;
+		write_to_csv(dataset_raw,str3);
+	}
 	std::cout<<std::endl;
 	std::cout<<"Res: "<<global<<" ; "<<com<<" -- RANK: "<<rank<<std::endl;
-
 	MPI_Finalize();
 	return 0;
 }
