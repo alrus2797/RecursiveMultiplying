@@ -1,4 +1,4 @@
-#include <iostream>
+#include <iostream> //Ez
 #include <map>
 #include <vector>
 #include <math.h>
@@ -32,17 +32,19 @@ int all_reduce(int rank, int* com, mat_sch schedule, int* global){
 	int sfactor, sbase, mask, offset, peer, rpeer, block;
 
 	MPI_Request request;
-	MPI_Status status;
 
 	void *rbuf;
 
-	std::cout<<"Execution by: "<< rank <<std::endl;
+
+	//std::cout<<"Execution by: "<< rank <<std::endl;
 
 	for (auto stage : schedule){
-		std::cout<<"Rank: "<<rank << " -- Stage: "<<stage[2]<<std::endl;
+		//std::cout<<"Rank: "<<rank << " -- Stage: "<<stage[2]<<std::endl;
 		if ( stage_type(stage) == 1 ){  //Factor Stage
 			sfactor	= stage_value(stage);
 			sbase	= sfactor * stage_mask;
+			int peers[sfactor-1];
+			MPI_Status status;
 			if ( wid != -1 ){
 				for (size_t index = 0; index < sfactor-1; index++)
 				{
@@ -55,25 +57,26 @@ int all_reduce(int rank, int* com, mat_sch schedule, int* global){
 						rpeer	= peer * pbase + pbase - 1;
 					}
 					else{
+						//Always go here
 						rpeer	= peer + (pthres/pbase) * (pbase - 1);
+						peers[index] = rpeer;
 						//std::cout<< "See if dangerous operation is float: " << pthres/pbase<<std::endl;
 					}
 					// Send non blocking value to rpeer
-					MPI_Isend(value, 1, MPI_INT, rpeer, 0, MPI_COMM_WORLD, &request);
+					MPI_Send(value, 1, MPI_INT, rpeer, 0, MPI_COMM_WORLD);
 				}
-				
-				for (size_t i = 0; i < sfactor; i++)
+
+				for (size_t i = 0; i < sfactor - 1; i++)
 				{
 					// Recv value from peer
-					MPI_Recv(value, 1, MPI_INT, i, 0, MPI_COMM_WORLD, &request);
+					MPI_Recv(global, 1, MPI_INT, peers[i], 0, MPI_COMM_WORLD, &status);
 					// Reduce value bfur
-					MPI_Wait(&request, &status);
-					MPI_Reduce_local(value, global, 1, MPI_INT, MPI_SUM);
-					std::cout<< "Res local reduce: "<< *(global)<<std::endl;
+					MPI_Reduce_local(global, value, 1, MPI_INT, MPI_SUM);
+					std::cout<< "Res local reduce: "<< *(value)<<" Rank: "<<  wid << " From: " << peers[i] <<" Stage: " << stage[2] << " Global: "<< *(global) <<std::endl;
 				}
 				//std::cout<<"Llego"<<std::endl;
 				// Wait on sends
-				//MPI_Barrier(MPI_COMM_WORLD);
+				MPI_Barrier(MPI_COMM_WORLD);
 			}
 			stage_mask = stage_mask *  sfactor;
 		}
@@ -86,16 +89,43 @@ int main(int argc, char *argv[])
 	mat_sch schedule = {
 		{1,2,1},
 		{1,2,2},
+		{1,2,3},
 	};
 	int rank = MPI::COMM_WORLD.Get_rank();
+
 	int global;
-	int com = 5;
+	int com =  rank;
+	//std::cout<<"Node Value: "<< com << " - Rank: "<<rank<<std::endl;
 
 	//MPI_Allreduce(&com, &global, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 	
 	all_reduce(rank, &com, schedule, &global);
 	MPI_Barrier(MPI_COMM_WORLD);
 	std::cout<<std::endl;
-	std::cout<<"Res: "<<global<<" -- RANK: "<<rank<<std::endl;
+	std::cout<<"Res: "<<global<<" ; "<<com<<" -- RANK: "<<rank<<std::endl;
+
+	MPI_Finalize();
 	return 0;
 }
+
+
+	// if (rank == 0){
+	// 	int np = 1;
+	// 	for (auto i : schedule){
+	// 		np *= i[1];
+	// 	}
+	// 	int arg_np = 0;
+	// 	for (int i = 0; i < argc; i++){
+	// 		std::cout<<"Argssss: "<<argv[i]<<"  "<<argc<<std::endl;
+	// 		if (argv[i] == "-np"){
+	// 			arg_np = i+1;
+	// 			break;
+	// 		}
+	// 	}
+
+	// 	std::cout<<"Args: "<<argv[arg_np]<<" "<<np<<std::endl;
+	// 	if (np != atoi(argv[arg_np])){
+	// 		std::cout << "Schedule not fit" << std::endl;
+	// 		return 0;
+	// 	}
+	// }
