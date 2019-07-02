@@ -35,12 +35,6 @@ int all_reduce(int rank, int* com, mat_sch schedule, int* global){
 
 	void *rbuf;
 
-	/* 
-	if(rank == 8){
-		wid = -1;
-	}
-	*/
-	
 
 	//std::cout<<"Execution by: "<< rank <<std::endl;
 
@@ -51,7 +45,7 @@ int all_reduce(int rank, int* com, mat_sch schedule, int* global){
 			sbase	= sfactor * stage_mask;
 			int peers[sfactor-1];
 			MPI_Status status;
-			if ( rank < stage[2] ){
+			if ( wid != -1 ){
 				for (size_t index = 0; index < sfactor-1; index++)
 				{
 					mask	= (index + 1) * stage_mask;
@@ -65,10 +59,9 @@ int all_reduce(int rank, int* com, mat_sch schedule, int* global){
 					else{
 						//Always go here
 						rpeer	= peer + (pthres/pbase) * (pbase - 1);
-						
+						peers[index] = rpeer;
 						//std::cout<< "See if dangerous operation is float: " << pthres/pbase<<std::endl;
 					}
-					peers[index] = peer;
 					// Send non blocking value to rpeer
 					MPI_Send(value, 1, MPI_INT, rpeer, 0, MPI_COMM_WORLD);
 				}
@@ -83,37 +76,9 @@ int all_reduce(int rank, int* com, mat_sch schedule, int* global){
 				}
 				//std::cout<<"Llego"<<std::endl;
 				// Wait on sends
-				//MPI_Barrier(MPI_COMM_WORLD);
+				MPI_Barrier(MPI_COMM_WORLD);
 			}
-			MPI_Barrier(MPI_COMM_WORLD);
 			stage_mask = stage_mask *  sfactor;
-		}
-		if ( stage_type(stage) == 0 ){ //colapsar
-			pthres = stage[1]; //primer sobrante, índice
-			MPI_Status status;
-			if (rank >= pthres){
-				MPI_Send(value, 1, MPI_INT, pthres-1, 0, MPI_COMM_WORLD);
-			}
-			else if (rank == pthres-1){
-				for(size_t i=0; i<stage[2]; i++){
-					MPI_Recv(global, 1, MPI_INT, pthres+i, 0, MPI_COMM_WORLD, &status);
-					MPI_Reduce_local(global, value, 1, MPI_INT, MPI_SUM);
-				}
-			}
-			MPI_Barrier(MPI_COMM_WORLD);
-		}
-		if ( stage_type(stage) == 2 ){ //expandir
-			MPI_Status status;
-			pthres = stage[1];
-			if (rank == pthres-1){
-				for(int i=pthres; i<pthres+stage[2];i++){
-					MPI_Send(value, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-				}
-			}
-			if (rank >= pthres){
-				MPI_Recv(value, 1, MPI_INT, pthres-1, 0, MPI_COMM_WORLD, &status);
-			}
-			
 		}
 	}
 }
@@ -122,24 +87,10 @@ int main(int argc, char *argv[])
 {
 	MPI_Init(&argc,&argv);
 	mat_sch schedule = {
-		/*
-		{0,4,2,0}, // indx primer elemento sobrante, sobrantes
-		{1,2,4,1},
-		{1,2,4,2}, //factor, indx primer elemento sobrante
-		{2,4,2,3}
-		*/
-	
-		{0,24,4,0},
-		{1,2,24,0},
-		{1,2,24,0},
-		{1,2,24,0},
-		{1,3,24,0},
-		{2,24,4,0}
-	/*
-		{1,2,28,0},
-		{1,2,28,0},
-		{1,7,28,0},
-	*/
+		{1,2,1},
+		{1,2,2},
+		{1,2,3},
+		{1,2,4},
 	};
 	int rank;
 	MPI_Comm_rank(MPI_COMM_WORLD,&rank);
