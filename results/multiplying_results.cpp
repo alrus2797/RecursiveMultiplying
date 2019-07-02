@@ -1,7 +1,10 @@
-#include <iostream> //Ez
+#include <iostream> //Código para Generar tablas
 #include <map>
 #include <vector>
 #include <math.h>
+#include"timer.c"
+#include"output.h"
+#include<memory.h>
 
 #include "mpi.h"
 
@@ -85,9 +88,6 @@ int all_reduce(int rank, int* com, mat_sch schedule, int* global){
 	}
 }
 
-#include"timer.c"
-#include"output.h"
-#include<memory.h>
 
 int main(int argc, char *argv[])
 {
